@@ -18,10 +18,12 @@ package com.hazelcast.jet.windowing;
 
 import com.hazelcast.jet.Distributed;
 import com.hazelcast.jet.accumulator.LinTrendAccumulator;
+import com.hazelcast.jet.accumulator.LinTrendWithErrorAcc;
 import com.hazelcast.jet.accumulator.LongAccumulator;
 import com.hazelcast.jet.accumulator.MutableReference;
 
 import javax.annotation.Nonnull;
+import java.util.Map.Entry;
 
 /**
  * Utility class with factory methods for several useful windowing
@@ -86,6 +88,29 @@ public final class WindowOperations {
                 LinTrendAccumulator::combine,
                 LinTrendAccumulator::deduct,
                 LinTrendAccumulator::finish
+        );
+    }
+
+    /**
+     * Returns an operation that computes the linear regression on the items
+     * in the window and estimates the quality of the approximation with the
+     * standard deviation of the fitted function from actual samples. The
+     * operation will produce a {@code double}-valued linear coefficient that
+     * approximates the rate of change of {@code y} as a function of {@code x},
+     * where {@code x} and {@code y} are {@code long} quantities extracted from
+     * each item by the two provided functions.
+     *
+     */
+    public static <T> WindowOperation<T, LinTrendWithErrorAcc, Entry<Double, Double>> linearRegressionWithError(
+            @Nonnull Distributed.ToLongFunction<T> getX,
+            @Nonnull Distributed.ToLongFunction<T> getY
+    ) {
+        return WindowOperation.of(
+                LinTrendWithErrorAcc::new,
+                (a, item) -> a.accumulate(getX.applyAsLong(item), getY.applyAsLong(item)),
+                LinTrendWithErrorAcc::combine,
+                LinTrendWithErrorAcc::deduct,
+                LinTrendWithErrorAcc::finish
         );
     }
 
