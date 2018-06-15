@@ -31,13 +31,14 @@ import com.hazelcast.jet.impl.pipeline.transform.AbstractTransform;
 import com.hazelcast.jet.impl.pipeline.transform.AggregateTransform;
 import com.hazelcast.jet.impl.pipeline.transform.Transform;
 import com.hazelcast.jet.pipeline.BatchStage;
+import com.hazelcast.jet.pipeline.BatchStageWithKey;
 import com.hazelcast.jet.pipeline.ContextFactory;
 import com.hazelcast.jet.pipeline.JoinClause;
-import com.hazelcast.jet.pipeline.StageWithGrouping;
 
 import javax.annotation.Nonnull;
 
 import static com.hazelcast.jet.function.DistributedFunctions.constantKey;
+import static com.hazelcast.jet.impl.util.Util.checkSerializable;
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
 
@@ -56,17 +57,20 @@ public class BatchStageImpl<T> extends ComputeStageImplBase<T> implements BatchS
     }
 
     @Nonnull @Override
-    public <K> StageWithGrouping<T, K> groupingKey(@Nonnull DistributedFunction<? super T, ? extends K> keyFn) {
-        return new StageWithGroupingImpl<>(this, keyFn);
+    public <K> BatchStageWithKey<T, K> addKey(@Nonnull DistributedFunction<? super T, ? extends K> keyFn) {
+        checkSerializable(keyFn, "keyFn");
+        return new BatchStageWithKeyImpl<>(this, keyFn);
     }
 
     @Nonnull @Override
     public <R> BatchStage<R> map(@Nonnull DistributedFunction<? super T, ? extends R> mapFn) {
+        checkSerializable(mapFn, "mapFn");
         return attachMap(mapFn);
     }
 
     @Nonnull @Override
     public BatchStage<T> filter(@Nonnull DistributedPredicate<T> filterFn) {
+        checkSerializable(filterFn, "filterFn");
         return attachFilter(filterFn);
     }
 
@@ -74,6 +78,7 @@ public class BatchStageImpl<T> extends ComputeStageImplBase<T> implements BatchS
     public <R> BatchStage<R> flatMap(
             @Nonnull DistributedFunction<? super T, ? extends Traverser<? extends R>> flatMapFn
     ) {
+        checkSerializable(flatMapFn, "flatMapFn");
         return attachFlatMap(flatMapFn);
     }
 
@@ -82,6 +87,7 @@ public class BatchStageImpl<T> extends ComputeStageImplBase<T> implements BatchS
             @Nonnull ContextFactory<C> contextFactory,
             @Nonnull DistributedBiFunction<? super C, ? super T, ? extends R> mapFn
     ) {
+        checkSerializable(mapFn, "mapFn");
         return attachMapUsingContext(contextFactory, mapFn);
     }
 
@@ -90,6 +96,7 @@ public class BatchStageImpl<T> extends ComputeStageImplBase<T> implements BatchS
             @Nonnull ContextFactory<C> contextFactory,
             @Nonnull DistributedBiPredicate<? super C, ? super T> filterFn
     ) {
+        checkSerializable(filterFn, "filterFn");
         return attachFilterUsingContext(contextFactory, filterFn);
     }
 
@@ -98,12 +105,13 @@ public class BatchStageImpl<T> extends ComputeStageImplBase<T> implements BatchS
             @Nonnull ContextFactory<C> contextFactory,
             @Nonnull DistributedBiFunction<? super C, ? super T, ? extends Traverser<? extends R>> flatMapFn
     ) {
+        checkSerializable(flatMapFn, "flatMapFn");
         return attachFlatMapUsingContext(contextFactory, flatMapFn);
     }
 
     @Nonnull @Override
-    public <R> BatchStage<R> aggregateRolling(@Nonnull AggregateOperation1<? super T, ?, ? extends R> aggrOp) {
-        return groupingKey(constantKey()).aggregateRolling(aggrOp, (k, v) -> v);
+    public <R> BatchStage<R> rollingAggregate(@Nonnull AggregateOperation1<? super T, ?, ? extends R> aggrOp) {
+        return addKey(constantKey()).rollingAggregate(aggrOp, (k, v) -> v);
     }
 
     @Nonnull @Override
@@ -133,23 +141,23 @@ public class BatchStageImpl<T> extends ComputeStageImplBase<T> implements BatchS
 
     @Nonnull @Override
     @SuppressWarnings("unchecked")
-    public <A, R> BatchStage<R> aggregate(@Nonnull AggregateOperation1<? super T, A, ? extends R> aggrOp) {
+    public <R> BatchStage<R> aggregate(@Nonnull AggregateOperation1<? super T, ?, ? extends R> aggrOp) {
         return attach(new AggregateTransform<>(singletonList(transform), aggrOp), fnAdapter);
     }
 
     @Nonnull @Override
-    public <T1, A, R> BatchStage<R> aggregate2(
+    public <T1, R> BatchStage<R> aggregate2(
             @Nonnull BatchStage<T1> stage1,
-            @Nonnull AggregateOperation2<? super T, ? super T1, A, ? extends R> aggrOp
+            @Nonnull AggregateOperation2<? super T, ? super T1, ?, ? extends R> aggrOp
     ) {
         return attach(new AggregateTransform<>(asList(transform, transformOf(stage1)), aggrOp), DO_NOT_ADAPT);
     }
 
     @Nonnull @Override
-    public <T1, T2, A, R> BatchStage<R> aggregate3(
+    public <T1, T2, R> BatchStage<R> aggregate3(
             @Nonnull BatchStage<T1> stage1,
             @Nonnull BatchStage<T2> stage2,
-            @Nonnull AggregateOperation3<? super T, ? super T1, ? super T2, A, ? extends R> aggrOp
+            @Nonnull AggregateOperation3<? super T, ? super T1, ? super T2, ?, ? extends R> aggrOp
     ) {
         return attach(new AggregateTransform<>(
                 asList(transform, transformOf(stage1), transformOf(stage2)), aggrOp),
