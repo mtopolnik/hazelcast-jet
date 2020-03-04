@@ -46,6 +46,7 @@ import com.hazelcast.map.IMap;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -159,6 +160,39 @@ public final class AggregateOperations {
                 .andCombine(DoubleAccumulator::combine)
                 .andDeduct(DoubleAccumulator::deduct)
                 .andExportFinish(DoubleAccumulator::export);
+    }
+
+    /**
+     * Returns an aggregate operation that computes the sum of the {@code
+     * BigDecimal} values it obtains by applying {@code getBigDecimalValueFn}
+     * to each item.
+     * <p>
+     * This sample takes a stream of lines of text and outputs a single {@code
+     * BigDecimal} number telling how many words there were in the stream:
+     * <pre>{@code
+     * BatchStage<String> linesOfText = pipeline.readFrom(textSource);
+     * BatchStage<Long> numberOfWordsInText =
+     *         linesOfText
+     *                 .map(line -> line.split("\\W+"))
+     *                 .aggregate(summingBigDecimal(wordsInLine ->
+     *                          new BigDecimal(wordsInLine.length)));
+     * }</pre>
+     **
+     * @param getBigDecimalValueFn function that extracts the {@code BigDecimal} value you want to sum
+     * @param <T> type of the input item
+     */
+    @Nonnull
+    public static <T> AggregateOperation1<T, MutableReference<BigDecimal>, BigDecimal> summingBigDecimal(
+            @Nonnull FunctionEx<? super T, ? extends BigDecimal> getBigDecimalValueFn
+    ) {
+        checkSerializable(getBigDecimalValueFn, "getBigDecimalValueFn");
+        return AggregateOperation
+                .withCreate(MutableReference<BigDecimal>::new)
+                .andAccumulate((MutableReference<BigDecimal> ref, T item) ->
+                        ref.set(ref.get().add(getBigDecimalValueFn.apply(item))))
+                .andCombine((ref1, ref2) -> ref1.set(ref1.get().add(ref2.get())))
+                .andDeduct((ref1, ref2) -> ref1.set(ref1.get().subtract(ref2.get())))
+                .andExportFinish(MutableReference::get);
     }
 
     /**
@@ -1793,9 +1827,9 @@ public final class AggregateOperations {
      * calls.
      * <p>
      * Using {@code IMap} aggregations can be desirable when you want to make
-     * use of {@linkplain IMap#addIndex(String, boolean) indices} when doing aggregations
-     * and want to use the Jet aggregations API instead of writing a custom
-     * {@link Aggregator}.
+     * use of {@linkplain IMap#addIndex indices} when doing aggregations and
+     * want to use the Jet aggregations API instead of writing a custom {@link
+     * Aggregator}.
      * <p>
      * For example, the following aggregation can be used to group people by
      * their age and find the counts for each group.
