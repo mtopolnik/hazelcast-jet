@@ -98,6 +98,21 @@ public class Networking {
 
         ExecutionContext executionContext = jobExecutionService.getExecutionContext(executionId);
         executionContext.handlePacket(vertexId, ordinal, packet.getConn().getEndPoint(), payload, offset);
+
+        slowDown(payload.length);
+    }
+
+    private static void slowDown(int factor) {
+        int commonFactor = 20;
+        for (int j = 0; j < commonFactor; j++) {
+            double ret = 0;
+            for (int i = 0; i < factor; i++) {
+                ret += Math.pow(i, 1.0000001);
+            }
+            if (ret < 0) { // Never happens, but ensures the result is used non-trivially
+                System.out.println("ret < 0");
+            }
+        }
     }
 
     public static byte[] createStreamPacketHeader(NodeEngine nodeEngine,
