@@ -402,19 +402,45 @@ public class SlidingWindowP<K, A, R, OUT> extends AbstractProcessor {
         return slidingWindow;
     }
 
+    private long flippedAtTs = 0;
+
     private Map<K, A> recomputeWindow(long frameTs) {
-        Map<K, A> window = new HashMap<>();
-        for (long ts = frameTs - winPolicy.windowSize() + winPolicy.frameSize();
-             ts <= frameTs;
-             ts += winPolicy.frameSize()
-        ) {
-            assert combineFn != null : "combineFn == null";
-            for (Entry<K, A> entry : tsToKeyToAcc.getOrDefault(ts, emptyMap()).entrySet()) {
-                combineFn.accept(
-                        window.computeIfAbsent(entry.getKey(), k -> aggrOp.createFn().get()),
-                        entry.getValue());
+        assert combineFn != null : "combineFn == null";
+        long startTs = frameTs - winPolicy.windowSize() + winPolicy.frameSize();
+        if (startTs > flippedAtTs) {
+            Map<K, A> keyToAcc = new HashMap<>();
+            for (long ts = frameTs;
+                 ts >= startTs;
+                 ts -= winPolicy.frameSize()
+            ) {
+                Map<K, A> frame = tsToKeyToAcc.computeIfAbsent(ts, x -> new HashMap<>());
+                for (Entry<K, A> entry : frame.entrySet()) {
+                    // We also need to store the value of the frame (not aggregate value)
+
+                    A a = frame.computeIfAbsent(entry.getKey(), k -> aggrOp.createFn().get()); // should get the value of frame
+                    long nextFrameTs = frameTs + winPolicy.frameSize();
+                    if (nextFrameTs <= frameTs) { // ts != frameTs
+                        A nextAcc = tsToKeyToAcc.get(nextFrameTs).get(entry.getKey());
+                        combineFn.accept(a, nextAcc);
+                    }
+                }
             }
+            flippedAtTs = frameTs;
         }
+
+        Map<K, A> window = new HashMap<>();
+
+        for (Entry<K, A> entry : tsToKeyToAcc.getOrDefault(frameTs, emptyMap()).entrySet()) {
+            A a = window.computeIfAbsent(entry.getKey(), k -> aggrOp.createFn().get());
+            combineFn.accept(a, entry.getValue());
+
+            long previousFrameTs = frameTs - winPolicy.frameSize();
+            if (previousFrameTs > flippedAtTs) {
+                combineFn.accept(a, tsToKeyToAcc.get(previousFrameTs).get(entry.getKey()));
+            }
+            combineFn.accept(a, tsToKeyToAcc.get(startTs).get(entry.getKey()));
+        }
+
         return window;
     }
 
